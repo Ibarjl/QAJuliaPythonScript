@@ -1,0 +1,100 @@
+# id: recoger_logs_para_script
+# namespace: utilidades
+
+# inputs:
+#   - id: executionId
+#     type: STRING
+#     description: "ID de la ejecución de Kestra de la que quieres recoger los logs."
+#     required: true
+
+# tasks:
+#   - id: obtener_logs
+#     type: io.kestra.plugin.core.log.Fetch
+#     executionId: "{{ inputs.executionId }}"
+#     level: INFO # Puedes ajustar el nivel de log (ERROR, WARN, INFO, DEBUG, TRACE)
+#     # Si quieres logs de una tarea específica dentro de la ejecución:
+#     # tasksId:
+#     #   - "id_de_tu_tarea"
+
+#   - id: procesar_logs_con_script
+#     type: io.kestra.plugin.scripts.julia.Script
+#     containerImage: Julia:latest # O una imagen con Julia si lo tienes instalado
+#     beforeCommands:
+#       - Pkg Logging
+
+#     script: |
+#       import sys
+#       import os
+
+#       # La URI del archivo de logs se pasa como una variable de entorno
+#       # Kestra convierte automáticamente la URI interna a una ruta de archivo accesible
+#       log_file_path = os.environ.get('LOG_FILE_URI')
+
+#       if log_file_path:
+#           print(f"Procesando logs del archivo: {log_file_path}")
+#           try:
+#               with open(log_file_path, 'r') as f:
+#                   logs = f.read()
+#                   # Aquí va la lógica de tu script para procesar los logs
+#                   print("--- Contenido de los logs ---")
+#                   print(logs)
+#                   print("--- Fin del contenido de los logs ---")
+                  
+#                   # Ejemplo: Contar líneas
+#                   num_lines = len(logs.splitlines())
+#                   print(f"Número total de líneas de log: {num_lines}")
+
+#                   # Puedes guardar resultados procesados como un output de la tarea
+#                   # import json
+#                   # Kestra.outputs({"processed_data": "tu_resultado"})
+#           except Exception as e:
+#               print(f"Error al leer el archivo de logs: {e}", file=sys.stderr)
+#               sys.exit(1)
+#       else:
+#           print("No se proporcionó la URI del archivo de logs.", file=sys.stderr)
+#           sys.exit(1)
+    
+#     # Mapea la URI del archivo de logs como una variable de entorno en tu script
+#     envs:
+#       LOG_FILE_URI: "{{ outputs.obtener_logs.uri }}"
+
+# outputs:
+#   - id: processed_log_info
+#     type: STRING
+#     value: "Logs de la ejecución {{ inputs.executionId }} procesados por el script."
+
+
+
+
+
+id: logs_de_kestra
+namespace: mi_script_kestra.script_logs
+
+inputs:
+  - id: id_flow
+    type: STRING
+    description: "ID de la ejecución de Kestra de la que quieres recoger los logs."
+    required: true
+
+tasks:
+  - id: logs_de_kestra.jl
+    type: io.kestra.plugin.scripts.julia.Script
+    # Usa la imagen de Docker que acabas de construir
+    containerImage: tu_registro_docker/mi_julia_script:latest
+
+    # El comando que Kestra ejecutará dentro del contenedor
+    commands:
+      - julia logs_de_kestra.jl "{{ inputs.id_flow }}"
+
+    # Captura los outputs de tu script (lo que se imprime en stdout)
+    outputs:
+      - id: resultado_script
+        type: STRING
+        # Kestra automáticamente mapea stdout al output de la tarea
+        # No necesitas configurar nada aquí si tu script solo imprime un valor
+
+# Opcional: Una tarea para loggear el resultado del script
+  - id: mostrar_resultado
+    type: io.kestra.plugin.core.log.Log
+    message: "El script Julia devolvió: {{ outputs.ejecutar_script_personalizado.stdout }}"
+    level: INFO
