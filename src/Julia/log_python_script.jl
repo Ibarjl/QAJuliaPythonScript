@@ -6,7 +6,7 @@ using Base.Filesystem
 global_logger(ConsoleLogger(stderr, Logging.Info))
 
 """
-    execute_python_script_pythoncall(script_path::String, function_name::String, args...)
+    log_python_script(script_path::String, function_name::String, args...)
 
 Intenta ejecutar una función específica dentro de un script Python utilizando PythonCall.jl.
 Registra un mensaje de información si la ejecución es exitosa,
@@ -17,7 +17,7 @@ Argumentos:
 - `function_name`: El nombre de la función dentro del script Python a ejecutar.
 - `args...`: Argumentos posicionales a pasar a la función Python.
 """
-function execute_python_script_pythoncall(script_path::String, function_name::String, args...)
+function log_python_script(script_path::String, function_name::String, args...)
     try
         normalized_script_path = replace(script_path, "\\" => "/")
         module_name = basename(normalized_script_path)[1:end-3] # Eliminar ".py"
@@ -84,16 +84,16 @@ println("--- Preparando scripts Python para testeo ---")
 
 # --- Test de Ejecución Exitosa ---
 println("\n--- Test de ejecución exitosa de script Python ---")
-# Ahora llamamos a la nueva función `execute_python_script_pythoncall`
-successful_python_result = execute_python_script_pythoncall(script_ok, "saludar", "Mundo")
+# Ahora llamamos a la nueva función `log_python_script`
+successful_python_result = log_python_script(script_ok, "saludar", "Mundo")
 println("Resultado Python exitoso: ", successful_python_result)
 
-successful_add_result = execute_python_script_pythoncall(script_ok, "sumar", 10, 5)
+successful_add_result = log_python_script(script_ok, "sumar", 10, 5)
 println("Resultado suma exitosa: ", successful_add_result)
 
 # --- Test de Ejecución con Error en Python ---
 println("\n--- Test de ejecución de script Python con error ---")
-error_python_result = execute_python_script_pythoncall(script_error, "causar_error", "dato_malo")
+error_python_result = log_python_script(script_error, "causar_error", "dato_malo")
 println("Resultado Python con error: ", error_python_result) # Será `nothing`
 
 # --- Prueba con debug (no se mostrará con nivel Info) ---
