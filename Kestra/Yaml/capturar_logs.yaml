@@ -66,35 +66,34 @@
 
 
 
-
+# capturar_logs.yaml (en C:\Users\iernestov\.scripts\ENTORNO_JULIA\QA\Kestra\Yaml\capturar_logs.yaml)
 id: logs_de_kestra
 namespace: mi_script_kestra.script_logs
 
 inputs:
-  - id: id_flow
+  - id: id_execution
     type: STRING
     description: "ID de la ejecución de Kestra de la que quieres recoger los logs."
     required: true
 
 tasks:
-  - id: logs_de_kestra.jl
+  # Se cambió el ID de la tarea a uno más descriptivo (opcional, pero buena práctica)
+  # También funciona si lo dejas como 'logs_de_kestra.jl'
+  - id: ejecutar_procesador_logs_julia
     type: io.kestra.plugin.scripts.julia.Script
-    # Usa la imagen de Docker que acabas de construir
-    containerImage: tu_registro_docker/mi_julia_script:latest
+    containerImage: tu_registro_docker/kestra-julia-processor:latest
 
-    # El comando que Kestra ejecutará dentro del contenedor
     commands:
-      - julia logs_de_kestra.jl "{{ inputs.id_flow }}"
+      # Corrección: usar el ID del input correcto (id_execution)
+      - julia logs_de_kestra.jl "{{ inputs.id_execution }}"
 
-    # Captura los outputs de tu script (lo que se imprime en stdout)
     outputs:
       - id: resultado_script
         type: STRING
-        # Kestra automáticamente mapea stdout al output de la tarea
-        # No necesitas configurar nada aquí si tu script solo imprime un valor
 
 # Opcional: Una tarea para loggear el resultado del script
   - id: mostrar_resultado
     type: io.kestra.plugin.core.log.Log
-    message: "El script Julia devolvió: {{ outputs.ejecutar_script_personalizado.stdout }}"
+    # Corrección: Referenciar el ID de la tarea Julia correctamente
+    message: "El script Julia devolvió: {{ outputs.ejecutar_procesador_logs_julia.stdout }}"
     level: INFO

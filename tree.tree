@@ -1,0 +1,99 @@
+QA
+┣ Kestra
+┃ ┣ Docker
+┃ ┃ ┗ Dockerfile
+┃ ┣ Julia
+┃ ┃ ┗ logs_de_kestra.jl
+┃ ┗ Yaml
+┃ ┃ ┗ capturar_logs.yaml
+┗ QAJuliaPythonScript
+┃ ┣ .git
+┃ ┃ ┣ hooks
+┃ ┃ ┃ ┣ applypatch-msg.sample
+┃ ┃ ┃ ┣ commit-msg.sample
+┃ ┃ ┃ ┣ fsmonitor-watchman.sample
+┃ ┃ ┃ ┣ post-update.sample
+┃ ┃ ┃ ┣ pre-applypatch.sample
+┃ ┃ ┃ ┣ pre-commit.sample
+┃ ┃ ┃ ┣ pre-merge-commit.sample
+┃ ┃ ┃ ┣ pre-push.sample
+┃ ┃ ┃ ┣ pre-rebase.sample
+┃ ┃ ┃ ┣ pre-receive.sample
+┃ ┃ ┃ ┣ prepare-commit-msg.sample
+┃ ┃ ┃ ┣ push-to-checkout.sample
+┃ ┃ ┃ ┣ sendemail-validate.sample
+┃ ┃ ┃ ┗ update.sample
+┃ ┃ ┣ info
+┃ ┃ ┃ ┗ exclude
+┃ ┃ ┣ logs
+┃ ┃ ┃ ┣ refs
+┃ ┃ ┃ ┃ ┣ heads
+┃ ┃ ┃ ┃ ┃ ┗ main
+┃ ┃ ┃ ┃ ┗ remotes
+┃ ┃ ┃ ┃ ┃ ┗ origin
+┃ ┃ ┃ ┃ ┃ ┃ ┣ HEAD
+┃ ┃ ┃ ┃ ┃ ┃ ┗ main
+┃ ┃ ┃ ┗ HEAD
+┃ ┃ ┣ objects
+┃ ┃ ┃ ┣ 1b
+┃ ┃ ┃ ┃ ┗ b120663261823c9f73dedbac4a369f25b3b0ae
+┃ ┃ ┃ ┣ 26
+┃ ┃ ┃ ┃ ┗ 5a75a45bdfa4c185d19ba4c59efa0f12b2f51e
+┃ ┃ ┃ ┣ 2f
+┃ ┃ ┃ ┃ ┗ f4b9389750acc21cda1bb33274b0dd810a707e
+┃ ┃ ┃ ┣ 47
+┃ ┃ ┃ ┃ ┗ ab3733a68e4f6504fc848f38c5f03d2a6bdf62
+┃ ┃ ┃ ┣ 48
+┃ ┃ ┃ ┃ ┗ d9a4ce62847ac92d73b3beb9735e45eb857a41
+┃ ┃ ┃ ┣ 6e
+┃ ┃ ┃ ┃ ┗ e69a4d6a807e0ad54ba035b6fe4508ac820907
+┃ ┃ ┃ ┣ 7d
+┃ ┃ ┃ ┃ ┗ 22f28a2f910e305c20536b00f5a7869f7171a1
+┃ ┃ ┃ ┣ a3
+┃ ┃ ┃ ┃ ┗ 0cd1827f658dcae9fb1b0db3988e970ea36b3c
+┃ ┃ ┃ ┣ c5
+┃ ┃ ┃ ┃ ┗ 14c7b2ded8eaa9cb6f3d64d98ea43ec3e08ace
+┃ ┃ ┃ ┣ d2
+┃ ┃ ┃ ┃ ┗ f3993abcf11e6bcf842916b674e08af04fc22e
+┃ ┃ ┃ ┣ de
+┃ ┃ ┃ ┃ ┗ 785197e93b8e6a61ead311cf169f8d5ff1bb22
+┃ ┃ ┃ ┣ e4
+┃ ┃ ┃ ┃ ┗ dbe12568945fbbbaa58edd69a6e89ee93b6c6b
+┃ ┃ ┃ ┣ f8
+┃ ┃ ┃ ┃ ┗ 2a8af812f4b0abebba799441d93330b2180fac
+┃ ┃ ┃ ┣ info
+┃ ┃ ┃ ┗ pack
+┃ ┃ ┃ ┃ ┣ pack-5cc4ef76d3bf9348f6301b688621ae3dd658b443.idx
+┃ ┃ ┃ ┃ ┣ pack-5cc4ef76d3bf9348f6301b688621ae3dd658b443.pack
+┃ ┃ ┃ ┃ ┗ pack-5cc4ef76d3bf9348f6301b688621ae3dd658b443.rev
+┃ ┃ ┣ refs
+┃ ┃ ┃ ┣ heads
+┃ ┃ ┃ ┃ ┗ main
+┃ ┃ ┃ ┣ remotes
+┃ ┃ ┃ ┃ ┗ origin
+┃ ┃ ┃ ┃ ┃ ┣ HEAD
+┃ ┃ ┃ ┃ ┃ ┗ main
+┃ ┃ ┃ ┗ tags
+┃ ┃ ┣ COMMIT_EDITMSG
+┃ ┃ ┣ config
+┃ ┃ ┣ description
+┃ ┃ ┣ HEAD
+┃ ┃ ┣ index
+┃ ┃ ┗ packed-refs
+┃ ┣ src
+┃ ┃ ┣ Julia
+┃ ┃ ┃ ┣ log_python_script copy.jl
+┃ ┃ ┃ ┣ log_python_script.jl
+┃ ┃ ┃ ┣ Manifest.toml
+┃ ┃ ┃ ┗ Project.toml
+┃ ┃ ┣ Python
+┃ ┃ ┃ ┣ __pycache__
+┃ ┃ ┃ ┃ ┣ script_error.cpython-312.pyc
+┃ ┃ ┃ ┃ ┗ script_ok.cpython-312.pyc
+┃ ┃ ┃ ┣ script_error.py
+┃ ┃ ┃ ┗ script_ok.py
+┃ ┃ ┣ Manifest.toml
+┃ ┃ ┗ Project.toml
+┃ ┣ .gitignore
+┃ ┣ LICENSE
+┃ ┗ README.md
