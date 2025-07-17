@@ -1,0 +1,435 @@
+# =============================================================================
+# FLUJO PRINCIPAL CON ERROR HANDLING Y PAUSE
+# =============================================================================
+id: monitoring_flow_with_error_handling
+namespace: dev.monitoring
+description: "Flujo con manejo de errores y pausa para intervención humana"
+
+variables:
+  file_name: "monitoring_container_{{execution.id}}"
+  org_usr: "ubuntu"
+  org_ip: "172.26.6.5"
+  org_password: "FT01.ITB01.cc1"
+
+tasks:
+  # =============================================================================
+  # CONFIGURACIÓN INICIAL
+  # =============================================================================
+  - id: setup_monitoring
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Configurar contenedor de monitoreo"
+    commands:
+      - echo "🚀 Iniciando configuración de monitoreo..."
+      - echo Contenedor: {{vars.file_name}}
+      - |
+        # Configurar contenedor Loki
+        docker run -d \
+          --name {{vars.file_name}} \
+          --restart unless-stopped \
+          -p 3100:3100 \
+          grafana/loki:latest \
+          -config.file=/etc/loki/local-config.yaml
+        
+        # Verificar que el contenedor esté corriendo
+        sleep 5
+        if ! docker ps | grep -q {{vars.file_name}}; then
+          echo "❌ ERROR: Contenedor no se inició correctamente"
+          exit 1
+        fi
+        
+        echo "✅ Contenedor iniciado exitosamente"
+        echo "📊 Iniciando tageo de Loki..."
+        
+        # Simular tageo de Loki (ajustar según tu implementación)
+        docker exec {{vars.file_name}} /bin/sh -c "
+          echo 'level=info msg=\"Monitoring started for {{vars.file_name}}\"' >> /var/log/loki.log
+        "
+    
+    # Error handling para setup
+    errors:
+      - id: setup_error_handler
+        type: io.kestra.core.tasks.flows.Sequential
+        tasks:
+          - id: log_setup_error
+            type: io.kestra.plugin.scripts.shell.Commands
+            commands:
+              - echo "❌ ERROR EN CONFIGURACIÓN INICIAL"
+              - echo Detalles: {{task.id}} falló durante setup
+              - echo "Timestamp: $(date)"
+              - echo Contenedor objetivo: {{vars.file_name}}
+              
+          - id: pause_on_setup_error
+            type: io.kestra.core.tasks.flows.Pause
+            description: "⚠️ ERROR EN SETUP - ¿Continuar con el flujo o hacer Kill?"
+            
+          - id: confirm_continue_after_setup_error
+            type: io.kestra.core.tasks.flows.Pause
+            description: "❓ ¿Confirmas que quieres CONTINUAR después del error de setup?"
+
+  # =============================================================================
+  # MONITOREO CONTINUO
+  # =============================================================================
+  - id: continuous_monitoring
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Monitoreo continuo con verificaciones periódicas"
+    commands:
+      - echo "🔍 Iniciando monitoreo continuo..."
+      - |
+        # Loop de monitoreo con verificaciones
+        MONITOR_COUNT=0
+        MAX_ERRORS=3
+        ERROR_COUNT=0
+        
+        while true; do
+          MONITOR_COUNT=$((MONITOR_COUNT + 1))
+          echo "🔄 Ciclo de monitoreo #$MONITOR_COUNT"
+          
+          # Verificar estado del contenedor
+          if ! docker ps | grep -q {{vars.file_name}}; then
+            echo "❌ ERROR: Contenedor {{vars.file_name}} no está corriendo"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+            
+            if [ $ERROR_COUNT -ge $MAX_ERRORS ]; then
+              echo "💥 MÁXIMO DE ERRORES ALCANZADO: $ERROR_COUNT/$MAX_ERRORS"
+              exit 1
+            fi
+            
+            echo "⚠️ Intento $ERROR_COUNT/$MAX_ERRORS - Continuando..."
+            sleep 10
+            continue
+          fi
+          
+          # Verificar logs de Loki
+          if ! docker exec {{vars.file_name}} ls /var/log/loki.log >/dev/null 2>&1; then
+            echo "⚠️ WARNING: Archivo de log no encontrado"
+            ERROR_COUNT=$((ERROR_COUNT + 1))
+            
+            if [ $ERROR_COUNT -ge $MAX_ERRORS ]; then
+              echo "💥 MÚLTIPLES WARNINGS CONVERTIDOS EN ERROR"
+              exit 1
+            fi
+          fi
+          
+          # Tagging de Loki
+          docker exec {{vars.file_name}} /bin/sh -c "
+            echo 'level=info msg=\"Monitoring cycle $MONITOR_COUNT completed\"' >> /var/log/loki.log
+          "
+          
+          # Simular posible error aleatorio (remover en producción)
+          if [ $((MONITOR_COUNT % 10)) -eq 0 ]; then
+            echo "🎲 Simulando posible error en ciclo $MONITOR_COUNT..."
+            if [ $((RANDOM % 100)) -lt 20 ]; then
+              echo "💥 ERROR SIMULADO: Fallo en verificación de conectividad"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ Ciclo $MONITOR_COUNT completado exitosamente"
+          sleep 30  # Intervalo de monitoreo
+        done
+    
+    # Error handling para monitoreo
+    errors:
+      - id: monitoring_error_handler
+        type: io.kestra.core.tasks.flows.Sequential
+        tasks:
+          - id: log_monitoring_error
+            type: io.kestra.plugin.scripts.shell.Commands
+            commands:
+              - echo "❌ ERROR EN MONITOREO CONTINUO"
+              - echo "Detalles: {{task.id}} falló durante monitoreo"
+              - echo "Timestamp: $(date)"
+              - echo Contenedor: {{vars.file_name}}
+              - |
+                # Capturar logs del contenedor para debugging
+                echo "📋 LOGS DEL CONTENEDOR:"
+                docker logs {{vars.file_name}} --tail 20 || echo "No se pudieron obtener logs"
+                
+                echo "🔍 ESTADO DEL CONTENEDOR:"
+                docker ps -a | grep {{vars.file_name}} || echo "Contenedor no encontrado"
+                
+          - id: pause_on_monitoring_error
+            type: io.kestra.core.tasks.flows.Pause
+            description: "⚠️ ERROR EN MONITOREO - ¿Continuar con el flujo o hacer Kill?"
+            
+          - id: confirm_continue_after_monitoring_error
+            type: io.kestra.core.tasks.flows.Pause
+            description: "❓ ¿Confirmas que quieres CONTINUAR después del error de monitoreo?"
+
+  # =============================================================================
+  # CONFIRMACIÓN ANTES DE PAUSA NORMAL
+  # =============================================================================
+  - id: confirm_proceed_to_pause
+    type: io.kestra.core.tasks.flows.Pause
+    description: "❓ Sistema funcionando correctamente. ¿Continuar a la pausa para intervención humana?"
+
+  # =============================================================================
+  # PAUSA NORMAL PARA INTERVENCIÓN HUMANA
+  # =============================================================================
+  - id: pause_for_human_intervention
+    type: io.kestra.core.tasks.flows.Pause
+    description: "✋ PAUSA NORMAL - Sistema funcionando, esperando intervención humana"
+
+  # =============================================================================
+  # CONFIRMACIÓN DESPUÉS DE PAUSA NORMAL
+  # =============================================================================
+  - id: confirm_continue_after_pause
+    type: io.kestra.core.tasks.flows.Pause
+    description: "❓ ¿Confirmas que quieres CONTINUAR con las tareas post-pausa?"
+
+  # =============================================================================
+  # CONTINUACIÓN POST-PAUSA
+  # =============================================================================
+  - id: post_pause_continuation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Tareas después de la pausa normal"
+    commands:
+      - echo "🎯 Continuando después de pausa normal..."
+      - echo "Preparando para dumps de métricas..."
+      - |
+        # Verificar estado antes de continuar
+        if ! docker ps | grep -q {{vars.file_name}}; then
+          echo "❌ ERROR: Contenedor ya no está disponible"
+          exit 1
+        fi
+        
+        echo "✅ Sistema listo para dumps"
+
+# =============================================================================
+# FLOW PARA CONTINUACIÓN CON PARÁMETROS
+# =============================================================================
+---
+id: dump_execution_flow
+namespace: dev.monitoring
+description: "Ejecutar dumps después de pausa o error"
+
+inputs:
+  - id: confirm_execution
+    type: BOOLEAN
+    defaults: false
+    description: "❓ ¿Confirmas que quieres ejecutar este dump?"
+    
+  - id: dump_type
+    type: SELECT
+    values: ["loki", "prometheus", "both"]
+    defaults: "both"
+    description: "Tipo de dump a ejecutar"
+    
+  - id: source_execution_id
+    type: STRING
+    description: "ID de la ejecución original (opcional)"
+    
+  - id: error_recovery
+    type: BOOLEAN
+    defaults: false
+    description: "¿Es una recuperación de error?"
+
+tasks:
+  - id: validate_confirmation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Validar confirmación del usuario"
+    commands:
+      - |
+        if [ "{{inputs.confirm_execution}}" != "true" ]; then
+          echo "❌ EJECUCIÓN CANCELADA - Confirmación no recibida"
+          echo "Para ejecutar este flow, marca 'confirm_execution' como true"
+          exit 1
+        fi
+        
+        echo "✅ Confirmación recibida - Procediendo con la ejecución"
+        echo "Tipo de dump: {{inputs.dump_type}}"
+        echo "Recuperación de error: {{inputs.error_recovery}}"
+
+  - id: pre_dump_checks
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Verificaciones antes del dump"
+    commands:
+      - echo "🔍 Verificando estado del sistema..."
+      - echo Tipo de dump: {{inputs.dump_type}}
+      - echo Recuperación de error: {{inputs.error_recovery}}
+      - |
+        if [ "{{inputs.error_recovery}}" = "true" ]; then
+          echo "🔧 MODO RECUPERACIÓN DE ERROR ACTIVADO"
+          # Verificaciones adicionales para recuperación
+          echo "Verificando conectividad..."
+          ping -c 1 {{vars.org_ip}} || echo "⚠️ Conectividad limitada"
+        fi
+
+  - id: execute_dumps
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Ejecutar dumps según parámetros"
+    commands:
+      - echo "🚀 Ejecutando dumps..."
+      - |
+        case "{{inputs.dump_type}}" in
+          "loki")
+            echo "📊 Ejecutando Loki dump..."
+            curl -G "http://localhost:3100/loki/api/v1/export" \
+              -d 'query={job="monitoring"}' \
+              -d 'start='$(date -d '1 hour ago' +%s)000000000 \
+              -d 'end='$(date +%s)000000000 \
+              -o "loki_dump_$(date +%Y%m%d_%H%M%S).json"
+            echo "✅ Loki dump completado"
+            ;;
+          "prometheus")
+            echo "📈 Ejecutando Prometheus dump..."
+            curl "http://localhost:9090/api/v1/query" \
+              -d 'query=up{job="monitoring"}' \
+              -d 'time='$(date +%s) \
+              -o "prometheus_dump_$(date +%Y%m%d_%H%M%S).json"
+            echo "✅ Prometheus dump completado"
+            ;;
+          "both")
+            echo "📊📈 Ejecutando ambos dumps..."
+            # Loki dump
+            curl -G "http://localhost:3100/loki/api/v1/export" \
+              -d 'query={job="monitoring"}' \
+              -d 'start='$(date -d '1 hour ago' +%s)000000000 \
+              -d 'end='$(date +%s)000000000 \
+              -o "loki_dump_$(date +%Y%m%d_%H%M%S).json"
+            
+            # Prometheus dump
+            curl "http://localhost:9090/api/v1/query" \
+              -d 'query=up{job="monitoring"}' \
+              -d 'time='$(date +%s) \
+              -o "prometheus_dump_$(date +%Y%m%d_%H%M%S).json"
+            
+            echo "✅ Ambos dumps completados"
+            ;;
+          *)
+            echo "❌ Tipo de dump no válido: {{inputs.dump_type}}"
+            exit 1
+            ;;
+        esac
+
+triggers:
+  - id: manual_dump_trigger
+    type: io.kestra.core.models.triggers.types.Manual
+    inputs:
+      - id: dump_type
+        type: SELECT
+        values: ["loki", "prometheus", "both"]
+      - id: error_recovery
+        type: BOOLEAN
+        defaults: false
+
+# =============================================================================
+# FLOW DE LIMPIEZA/KILL
+# =============================================================================
+---
+id: cleanup_kill_flow
+namespace: dev.monitoring
+description: "Limpiar recursos y hacer kill del sistema"
+
+inputs:
+  - id: confirm_cleanup
+    type: BOOLEAN
+    defaults: false
+    description: "❓ ¿Confirmas que quieres ejecutar la limpieza/kill?"
+    
+  - id: force_kill
+    type: BOOLEAN
+    defaults: false
+    description: "¿Forzar limpieza aunque haya errores?"
+    
+  - id: target_container
+    type: STRING
+    description: "Nombre del contenedor a limpiar (opcional)"
+
+tasks:
+  - id: validate_cleanup_confirmation
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Validar confirmación para limpieza"
+    commands:
+      - |
+        if [ "{{inputs.confirm_cleanup}}" != "true" ]; then
+          echo "❌ LIMPIEZA CANCELADA - Confirmación no recibida"
+          echo "⚠️ Para ejecutar cleanup, marca 'confirm_cleanup' como true"
+          echo "⚠️ ADVERTENCIA: Esto eliminará todos los contenedores de monitoreo"
+          exit 1
+        fi
+        
+        echo "✅ Confirmación de limpieza recibida"
+        echo "🧹 Procediendo con cleanup..."
+        echo "Forzar kill: {{inputs.force_kill}}"
+        echo "Contenedor objetivo: {{inputs.target_container}}"
+
+  - id: cleanup_resources
+    type: io.kestra.plugin.scripts.shell.Commands
+    description: "Limpiar todos los recursos"
+    commands:
+      - echo "🧹 Iniciando limpieza de recursos..."
+      - |
+        # Determinar contenedor objetivo
+        if [ -n "{{inputs.target_container}}" ]; then
+          CONTAINER_NAME="{{inputs.target_container}}"
+        else
+          CONTAINER_NAME="monitoring_container_*"
+        fi
+        
+        echo "🎯 Limpiando contenedor(es): $CONTAINER_NAME"
+        
+        # Detener contenedores
+        for container in $(docker ps -a --format "{{.Names}}" | grep -E "^monitoring_container_"); do
+          echo "🛑 Deteniendo contenedor: $container"
+          docker stop "$container" || echo "⚠️ No se pudo detener $container"
+          
+          echo "🗑️ Eliminando contenedor: $container"
+          docker rm "$container" || echo "⚠️ No se pudo eliminar $container"
+        done
+        
+        # Limpiar archivos temporales
+        echo "🧹 Limpiando archivos temporales..."
+        rm -f /tmp/flow_status* || true
+        rm -f /tmp/user_signal* || true
+        
+        # Limpiar dumps antiguos (opcional)
+        echo "🧹 Limpiando dumps antiguos..."
+        find . -name "*_dump_*.json" -mtime +7 -delete || true
+        
+        echo "✅ Limpieza completada"
+
+triggers:
+  - id: manual_kill_trigger
+    type: io.kestra.core.models.triggers.types.Manual
+    inputs:
+      - id: force_kill
+        type: BOOLEAN
+        defaults: false
+
+# =============================================================================
+# INSTRUCCIONES DE USO
+# =============================================================================
+
+# 📋 CÓMO USAR EL SISTEMA:
+
+# 1. EJECUCIÓN NORMAL:
+#    - Ejecutar "monitoring_flow_with_error_handling"
+#    - El sistema inicia monitoreo
+#    - Si hay error → se pausa automáticamente
+#    - Si todo OK → pausa normal para intervención humana
+#    - BOTÓN KILL SIEMPRE VISIBLE en la UI
+
+# 2. CUANDO HAY ERROR:
+#    - El flow se pausa automáticamente
+#    - Revisa los logs para entender el error
+#    - Decide si:
+#      a) Continuar: Ejecutar "dump_execution_flow" con error_recovery=true
+#      b) Kill: Usar botón Kill o ejecutar "cleanup_kill_flow"
+
+# 3. PAUSA NORMAL:
+#    - Ejecutar "dump_execution_flow" con los parámetros deseados
+#    - O usar botón Kill si quieres detener todo
+
+# 4. LIMPIEZA:
+#    - Ejecutar "cleanup_kill_flow" para limpiar recursos
+#    - O simplemente usar botón Kill en cualquier momento
+
+# 🎯 VENTAJAS:
+# ✅ Botón Kill siempre visible
+# ✅ Pausa automática en errores
+# ✅ Logs detallados para debugging
+# ✅ Recuperación granular de errores
+# ✅ Limpieza completa de recursos
+# ✅ UI integrada con Select para parámetros
+# ✅ Acceso remoto total

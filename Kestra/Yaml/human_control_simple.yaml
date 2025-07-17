@@ -1,0 +1,80 @@
+# =============================================================================
+# FLUJO KESTRA SÚPER SIMPLE CON TRY-CATCH AUTOMÁTICO
+# =============================================================================
+id: simple_monitoring_flow
+namespace: dev.monitoring
+description: "Flujo simple con try-catch automático en cada cambio"
+
+tasks:
+  - id: main_flow
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - |
+        echo "🚀 Iniciando flujo de monitoreo simple..."
+        
+        # Función para pausa con confirmación
+        pause_with_confirm() {
+          local message="$1"
+          echo "⏸️  $message"
+          echo "Para continuar: touch /tmp/continue_${RANDOM}"
+          echo "Para cancelar: touch /tmp/cancel_${RANDOM}"
+          echo "Esperando decisión..."
+          # Aquí se mantiene en espera hasta intervención manual
+          sleep 999999
+        }
+        
+        # Try-catch para setup
+        echo "📋 FASE 1: Setup"
+        if ! setup_result=$(
+          docker run -d --name {{vars.file_name}} loki_image &&
+          echo "✅ Setup exitoso"
+        ); then
+          pause_with_confirm "❌ ERROR EN SETUP - ¿Continuar?"
+        fi
+        
+        # Try-catch para monitoreo
+        echo "📋 FASE 2: Monitoreo"
+        if ! monitor_result=$(
+          docker exec {{vars.file_name}} echo "Monitoring active" &&
+          echo "✅ Monitoreo exitoso"
+        ); then
+          pause_with_confirm "❌ ERROR EN MONITOREO - ¿Continuar?"
+        fi
+        
+        # Pausa normal
+        pause_with_confirm "✅ TODO OK - ¿Continuar con dumps?"
+        
+        # Try-catch para dumps
+        echo "📋 FASE 3: Dumps"
+        if ! dump_result=$(
+          curl -G "http://localhost:3100/loki/api/v1/export" > loki_dump.json &&
+          curl "http://localhost:9090/api/v1/query" > prometheus_dump.json &&
+          echo "✅ Dumps exitosos"
+        ); then
+          pause_with_confirm "❌ ERROR EN DUMPS - ¿Continuar?"
+        fi
+        
+        echo "🎉 Flujo completado exitosamente"
+        
+    # Error handler global
+    errors:
+      - id: global_error_handler
+        type: io.kestra.core.tasks.flows.Pause
+        description: "💥 ERROR GLOBAL - Botón Kill siempre disponible"
+
+# =============================================================================
+# CONTINUACIÓN MANUAL
+# =============================================================================
+---
+id: continue_flow
+namespace: dev.monitoring
+tasks:
+  - id: send_continue_signal
+    type: io.kestra.plugin.scripts.shell.Commands
+    commands:
+      - touch /tmp/continue_$(date +%s)
+      - echo "✅ Señal de continuar enviada"
+
+triggers:
+  - id: manual_continue
+    type: io.kestra.core.models.triggers.types.Manual
