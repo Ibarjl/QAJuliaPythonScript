@@ -7,7 +7,7 @@ WORKDIR /app
 COPY Julia/logs_de_kestra.jl .
 
 # Instala los paquetes de Julia
-RUN julia -e 'import Pkg; Pkg.add("Logging"); Pkg.add("DataFrames")'
+RUN julia -e 'import Pkg; Pkg.add("Logging"); Pkg.add("DataFrames"); Pkg.add("JSON")'
 
 # El comando por defecto, aunque Kestra lo sobrescriba
 CMD ["julia", "logs_de_kestra.jl"]

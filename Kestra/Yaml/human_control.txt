@@ -54,7 +54,7 @@ tasks:
             type: io.kestra.plugin.scripts.shell.Commands
             commands:
               - echo "❌ ERROR EN CONFIGURACIÓN INICIAL"
-              - echo Detalles: {{task.id}} falló durante setup
+              - echo Detalles: {{ task.id }} falló durante setup
               - echo "Timestamp: $(date)"
               - echo Contenedor objetivo: {{vars.file_name}}
               

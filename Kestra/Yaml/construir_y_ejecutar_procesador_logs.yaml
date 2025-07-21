@@ -1,0 +1,118 @@
+id: NCC-GT-LOKI_TAG
+namespace: core.gt
+ 
+inputs:
+  - type: STRING
+    id: Test_ID
+  - id: IP_Nodo
+    type: STRING
+  - id: id_ejecucion_a_procesar
+    type: STRING
+    description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
+    required: true
+ 
+triggers:
+  - id: grafana-loki-tag
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: loki-tag
+ 
+tasks:
+  # 1. Ejecutar el script remoto de tagging
+  - id: tag_Logs_sh_Exe
+    type: io.kestra.plugin.fs.ssh.Command
+    host: 172.26.3.119
+    username: "int"
+    password: "N1mINTbus.01"
+    commands:
+      - ssh -o StrictHostKeyChecking=no int@{{ inputs.IP_Nodo }} "sudo su -c 'cd /home/int/itcore-demo/karmada/GT-FT/fluentbit/ && ./tagLogs.sh {{inputs.Test_ID}}'"
+ 
+  # 2. Construir la imagen Docker
+  - id: construir_imagen_julia_processor
+    type: io.kestra.plugin.docker.Build
+    inputFiles:
+      Docker/Dockerfile: "{{ read('Docker/Dockerfile') }}"
+      Julia/logs_de_kestra.jl: "{{ read('Julia/logs_de_kestra.jl') }}"
+    dockerfile: Docker/Dockerfile
+    tags:
+      - tu_registro_docker/kestra-julia-processor:{{ flow.id }}-{{ execution.id }}
+ 
+  # 3. Obtener los logs de la ejecución vía API
+  - id: obtener_logs_de_ejecucion
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
+    method: GET
+    # headers:
+    #   Authorization: "Bearer {{ secret('KESTRA_API_TOKEN') }}"
+ 
+  # 4. Procesar con Julia usando la imagen recién construida
+  - id: procesar_logs_con_julia
+    type: io.kestra.plugin.scripts.julia.Script
+    containerImage: tu_registro_docker/kestra-julia-processor:{{ flow.id }}-{{ execution.id }}
+    env:
+      LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+    script: |
+      julia logs_de_kestra.jl
+ 
+ 
+outputs:
+  - id: logs_capturados
+    type: STRING
+    value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+  - id: resultado_del_procesamiento_julia
+    type: STRING
+    value: "{{ outputs.procesar_logs_con_julia.stdout }}"
+
+
+
+
+# id: construir_y_ejecutar_procesador_logs
+# namespace: mi_script_kestra.script_logs
+
+# inputs:
+#   - id: id_ejecucion_a_procesar
+#     type: STRING
+#     description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
+#     required: true
+
+# tasks:
+#   # 1. Construir la imagen Docker
+#   - id: construir_imagen_julia_processor
+#     type: io.kestra.plugin.docker.Build
+#     # Define los archivos que Kestra debe copiar para el contexto de construcción de Docker
+#     # Kestra creará un directorio temporal con estos archivos antes de ejecutar el build
+#     inputFiles:
+#       # Copia el Dockerfile
+#       Docker/Dockerfile: "{{ read('Docker/Dockerfile') }}"
+#       # Copia el script Julia dentro de una carpeta 'Julia' que el Dockerfile espera
+#       Julia/logs_de_kestra.jl: "{{ read('Julia/logs_de_kestra.jl') }}"
+    
+#     # La ruta al Dockerfile dentro del contexto de construcción temporal
+#     dockerFile: Docker/Dockerfile
+    
+#     # El nombre de la imagen que se va a construir
+#     image: tu_registro_docker/kestra-julia-processor:{{ flow.id }}-{{ execution.id }}
+    
+
+#   # 2. Obtener los logs de la ejecución vía API
+#   - id: obtener_logs_de_ejecucion
+#     type: io.kestra.plugin.core.http.Request
+#     uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
+#     method: GET
+#     # headers:
+#     #   Authorization: "Bearer {{ secret('KESTRA_API_TOKEN') }}"
+
+#   # 3. Procesar con Julia (usando la imagen recién construida)
+#   - id: procesar_logs_con_julia
+#     type: io.kestra.plugin.scripts.julia.Script
+#     # ¡Importante! Aquí usamos la imagen que acabamos de construir
+#     containerImage: "{{ outputs.construir_imagen_julia_processor.image }}"
+#     env:
+#       LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+#     commands:
+#       - julia logs_de_kestra.jl # El script está en la imagen en el WORKDIR /app
+
+# outputs:
+#   - id: logs_capturados
+#     value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+#   - id: resultado_del_procesamiento_julia
+#     value: "{{ outputs.procesar_logs_con_julia.stdout }}"
