@@ -1,0 +1,42 @@
+id: construir_y_ejecutar_procesador_logs
+namespace: core.gt
+
+inputs:
+  - id: id_ejecucion_a_procesar
+    type: STRING
+    description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
+    required: true
+
+tasks:
+  # 1. Construir la imagen Docker (sin cambios)
+  - id: construir_imagen_julia_processor
+    type: io.kestra.plugin.docker.Build
+    inputFiles:
+      Dockerfile: "{{ read('Dockerfile') }}"
+      logs_de_kestra.jl: "{{ read('logs_de_kestra.jl') }}"
+    dockerfile: Dockerfile
+    tags:
+      - kestra-julia-processor:{{ execution.id }}
+
+  # 2. Obtener los logs de la ejecución vía API (sin cambios)
+  - id: obtener_logs_de_ejecucion
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
+    method: GET
+
+  # 3. Procesar con Julia (versión simplificada y corregida)
+  - id: procesar_logs_con_julia
+    type: io.kestra.plugin.docker.Run # Usamos el plugin genérico de Docker
+    # Usamos la imagen que acabamos de construir
+    containerImage: kestra-julia-processor:{{ execution.id }}
+    # Pasamos el JSON de los logs como variable de entorno
+    env:
+      LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+
+outputs:
+  - id: logs_capturados
+    type: STRING
+    value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+  - id: resultado_del_procesamiento_julia
+    type: STRING
+    value: "{{ outputs.procesar_logs_con_julia.stdout }}"

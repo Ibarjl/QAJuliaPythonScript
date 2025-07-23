@@ -4,12 +4,14 @@ QA
 ┃ ┃ ┗ Dockerfile
 ┃ ┣ Julia
 ┃ ┃ ┣ human_control.jl
-┃ ┃ ┗ logs_de_kestra.jl
+┃ ┃ ┣ logs_de_kestra.jl
+┃ ┃ ┗ logs_de_kestra_antiguo.txt
 ┃ ┗ Yaml
-┃ ┃ ┣ capturar_logs.yaml
-┃ ┃ ┣ human_control.yaml
+┃ ┃ ┣ capturar_logs.txt
+┃ ┃ ┣ construir_y_ejecutar_procesador_logs.yaml
+┃ ┃ ┣ human_control.txt
 ┃ ┃ ┗ human_control_simple.yaml
-┗ QAJuliaPythonScript
+┣ QAJuliaPythonScript
 ┃ ┣ src
 ┃ ┃ ┣ Julia
 ┃ ┃ ┃ ┣ log_python_script copy.jl
@@ -27,3 +29,6 @@ QA
 ┃ ┣ .gitignore
 ┃ ┣ LICENSE
 ┃ ┗ README.md
+┣ Manifest.toml
+┣ Project.toml
+┗ tree.tree

@@ -28,15 +28,8 @@ function crear_df_desde_ruta(ruta::String)::DataFrame
                     df = DataFrame() # Inicializa un DataFrame temporal
                     if endswith(archivo, ".json")
                         logs_data = JSON.parse(contenido) # Parsea el contenido JSON
-                        # Asegurarse de que logs_data sea un array de objetos para DataFrame
-                        if isa(logs_data, AbstractArray)
-                            df = DataFrame(logs_data)
-                        elseif isa(logs_data, AbstractDict)
-                            df = DataFrame([logs_data]) # Si es un solo objeto, envolverlo en un array
-                        else
-                            @warn "Contenido JSON inesperado en $archivo." (Fecha: 2025-07-22)
-                            continue
-                        end
+                        df = DataFrame(logs_data)         # Convierte los datos a DataFrame
+
                     elseif endswith(archivo, ".txt") || endswith(archivo, ".log")
                         lineas = filter(!isempty, split(contenido, "\n")) # Divide el contenido en líneas y elimina vacías
                         # Extrae el nivel del log si existe al principio de la línea
@@ -59,8 +52,7 @@ function crear_df_desde_ruta(ruta::String)::DataFrame
                         if isempty(df_logs)
                             df_logs = df # Si es el primer archivo, asigna directamente
                         else
-                            # Usa `vcat` con `cols=:union` para manejar columnas diferentes de forma segura
-                            df_logs = vcat(df_logs, df, cols=:union) 
+                            df_logs = vcat(df_logs, df, cols=:union) # Une los DataFrames manejando columnas diferentes
                         end
                     end
                 catch e
@@ -109,7 +101,7 @@ function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::Str
 
     freq_table = freqtable(logs_df[!, type_col]) # Cuenta la frecuencia de cada valor en la columna
     labels = string.(keys(freq_table))          # Extrae las etiquetas (niveles)
-    counts = collect(values(freq_table))         # Extrae los conteos
+    counts = collect(values(freq_table))        # Extrae los conteos
 
     # Crea el gráfico de barras
     p = bar(labels, counts, 
@@ -122,46 +114,33 @@ function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::Str
             )
     
     # Justificación: Guarda el gráfico en un archivo para que Kestra pueda capturarlo.
-    savefig(p, "/tmp_output/" * output_file)
+    savefig(p, output_file) 
     @info "Gráfico guardado en: $output_file" (Fecha: 2025-07-22)
     return output_file # Retorna el nombre del archivo generado
 end
 
-# Justificación: Bloque principal para la ejecución del script.
-# Ahora puede leer desde una variable de entorno (cuando se ejecuta en Docker/Kestra)
-# o desde un argumento de línea de comandos (para pruebas locales).
+# Justificación: Obtiene la ruta de los logs desde los argumentos de la línea de comandos.
+# Esto permite que Kestra le pase la ruta_destino dinámicamente.
 if abspath(PROGRAM_FILE) == @__FILE__
-    local df_logs_data = DataFrame() # Inicializa el DataFrame para los datos de logs
-
-    if haskey(ENV, "LOGS_JSON_DATA") # Verifica si la variable de entorno existe
-        @info "Leyendo logs de la variable de entorno LOGS_JSON_DATA." (Fecha: 2025-07-22)
-        try
-            logs_json_str = ENV["LOGS_JSON_DATA"]
-            parsed_data = JSON.parse(logs_json_str)
-            # La API de Kestra devuelve un array de objetos log, cada uno con 'message', 'level', etc.
-            if isa(parsed_data, AbstractArray)
-                df_logs_data = DataFrame(parsed_data)
-            else
-                @error "Formato de datos JSON inesperado en LOGS_JSON_DATA. Se esperaba un array." (Fecha: 2025-07-22)
-                exit(1) # Termina la ejecución con error
-            end
-        catch e
-            @error "Error al parsear LOGS_JSON_DATA: $e" exception=(e, catch_backtrace()) (Fecha: 2025-07-22)
-            exit(1) # Termina la ejecución con error
-        end
-    elseif length(ARGS) >= 1 # Si no hay variable de entorno, intenta leer desde un argumento de línea de comandos
-        ruta_logs = ARGS[1]
-        @info "Procesando logs de la ruta: $ruta_logs" (Fecha: 2025-07-22)
-        df_logs_data = crear_df_desde_ruta(ruta_logs)
-    else
-        @error "Se requiere la ruta de los logs como argumento o la variable de entorno LOGS_JSON_DATA." (Fecha: 2025-07-22)
-        exit(1) # Termina la ejecución con error
+    if length(ARGS) < 1
+        @error "Se requiere la ruta de los logs como argumento." (Fecha: 2025-07-22)
+        exit(1)
     end
+    
+    ruta_logs = ARGS[1]
+    @info "Procesando logs de la ruta: $ruta_logs" (Fecha: 2025-07-22)
 
-    if nrow(df_logs_data) > 0
-        @info "DataFrame de logs creado con $(nrow(df_logs_data)) filas." (Fecha: 2025-07-22)
-        # Genera el gráfico de distribución de logs
-        visualizar_logs(df_logs_data, output_file="distribucion_logs.png")
+    df = crear_df_desde_ruta(ruta_logs)
+
+    if nrow(df) > 0
+        @info "DataFrame de logs creado con $(nrow(df)) filas." (Fecha: 2025-07-22)
+        # Puedes elegir qué visualización generar aquí
+        visualizar_logs(df, output_file="distribucion_logs.png")
+        # Si quieres visualizar errores específicos:
+        # df_errores = filtrar_logs_de_error(df)
+        # if nrow(df_errores) > 0
+        #     visualizar_logs(df_errores, type_col=:level, title="Distribución de Errores", output_file="distribucion_errores.png")
+        # end
     else
         @warn "No se pudieron procesar logs o el DataFrame está vacío." (Fecha: 2025-07-22)
     end
