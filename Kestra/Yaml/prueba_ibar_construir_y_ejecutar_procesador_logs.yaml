@@ -20,20 +20,42 @@ tasks:
       - kestra-julia-processor:{{ execution.id }}
     description: "Construyendo la imagen Docker en el worker de Kestra."
 
+  - id: verificar_conectividad_api
+    type: io.kestra.plugin.core.http.Request
+    uri: "http://localhost:8080/api/v1/version"
+    method: GET
+    headers:
+      Accept: "application/json"
+    description: "Verificar que la API de Kestra esté disponible"
+
   - id: obtener_logs_de_ejecucion
     type: io.kestra.plugin.core.http.Request
     uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
     method: GET
-    # CAMBIO CRÍTICO: Añadir headers para autenticación si es necesario.
-    # Si tu Kestra requiere autenticación (común incluso en localhost), DEBES añadir un token aquí.
-    # Ejemplo (reemplaza 'YOUR_KESTRA_API_TOKEN' con tu token real):
-    # headers:
-    #   Authorization: "Bearer YOUR_KESTRA_API_TOKEN"
-    description: "Obteniendo los logs de la ejecución de Kestra."
+    # CRÍTICO: Configuración de autenticación
+    headers:
+      Authorization: "Basic {{ secret('KESTRA_API_TOKEN') }}"
+      # O si usas Bearer token:
+      # Authorization: "Bearer {{ secret('KESTRA_BEARER_TOKEN') }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+    # Configuración adicional para manejar errores
+    options:
+      allowBody: true
+      timeout: 30000
+      followRedirects: true
+    description: "Obteniendo los logs de la ejecución de Kestra con autenticación."
 
   - id: debug_api_output # Tarea de depuración: ¡Muy importante para ver la respuesta de la API!
     type: io.kestra.plugin.core.log.Log
-    message: "Output de obtener_logs_de_ejecucion: {{ outputs.obtener_logs_de_ejecucion | json }}"
+    message: |
+      === DEBUG API RESPONSE ===
+      Status Code: {{ outputs.obtener_logs_de_ejecucion.code }}
+      Headers: {{ outputs.obtener_logs_de_ejecucion.headers | json }}
+      Body Type: {{ outputs.obtener_logs_de_ejecucion.body | type }}
+      Body Preview: {{ outputs.obtener_logs_de_ejecucion.body | truncate(500) }}
+      Full Output: {{ outputs.obtener_logs_de_ejecucion | json }}
+      ========================
 
   - id: procesar_logs_con_julia
     type: io.kestra.plugin.docker.Run

@@ -84,46 +84,62 @@ function crear_df_desde_contenido(log_content::String)::DataFrame
         return df_logs
     end
 
+    @info "Intentando procesar contenido de logs (longitud: $(length(log_content)) caracteres)" (Fecha: today())
+    
     try
         # Intentar parsear como JSON (si Kestra API devuelve JSON)
         parsed_data = JSON.parse(log_content)
+        @info "JSON parseado exitosamente, tipo: $(typeof(parsed_data))" (Fecha: today())
+        
         if isa(parsed_data, AbstractArray)
+            @info "Procesando array JSON con $(length(parsed_data)) elementos" (Fecha: today())
             df_logs = DataFrame(parsed_data)
         elseif isa(parsed_data, AbstractDict)
-            df_logs = DataFrame([parsed_data])
+            @info "Procesando diccionario JSON" (Fecha: today())
+            # Si es un objeto con logs como propiedad
+            if haskey(parsed_data, "logs")
+                logs_array = parsed_data["logs"]
+                df_logs = DataFrame(logs_array)
+            elseif haskey(parsed_data, "data")
+                logs_array = parsed_data["data"]
+                df_logs = DataFrame(logs_array)
+            else
+                df_logs = DataFrame([parsed_data])
+            end
         else
-            @warn "Contenido JSON inesperado. Se procesará como texto plano." (Fecha: today())
+            @warn "Contenido JSON inesperado: $(typeof(parsed_data)). Se procesará como texto plano." (Fecha: today())
             # Fallback a texto plano si JSON no es un array/dict esperado
-            lineas = filter(!isempty, split(log_content, "\n"))
-            niveles = map(line -> begin
-                    if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
-                        match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
-                    else
-                        "UNKNOWN"
-                    end
-                end, lineas)
-            df_logs = DataFrame(
-                level = niveles,
-                content = lineas
-            )
+            df_logs = procesar_como_texto_plano(log_content)
         end
     catch e
         # Si falla el parseo JSON, procesar como texto plano
         @warn "Fallo al parsear JSON: $e. Procesando como texto plano." (Fecha: today())
-        lineas = filter(!isempty, split(log_content, "\n"))
-        niveles = map(line -> begin
-                if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
-                    match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
-                else
-                    "UNKNOWN"
-                end
-            end, lineas)
-        df_logs = DataFrame(
-            level = niveles,
-            content = lineas
-        )
+        df_logs = procesar_como_texto_plano(log_content)
     end
+    
+    @info "DataFrame creado con $(nrow(df_logs)) filas y columnas: $(names(df_logs))" (Fecha: today())
     return df_logs
+end
+
+"""
+Helper function para procesar contenido como texto plano
+"""
+function procesar_como_texto_plano(log_content::String)::DataFrame
+    lineas = filter(!isempty, split(log_content, "\n"))
+    @info "Procesando $(length(lineas)) líneas de texto plano" (Fecha: today())
+    
+    niveles = map(line -> begin
+            if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
+                match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
+            else
+                "UNKNOWN"
+            end
+        end, lineas)
+    
+    return DataFrame(
+        level = niveles,
+        content = lineas
+    )
 end
 
 
