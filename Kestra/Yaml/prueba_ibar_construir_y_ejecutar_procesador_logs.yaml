@@ -1,4 +1,4 @@
-id: _prueba_ibar_construir_y_ejecutar_procesador_logs
+id: prueba_ibar_construir_y_ejecutar_procesador_logs
 namespace: core.gt
 
 inputs:
@@ -6,42 +6,46 @@ inputs:
     type: STRING
     description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
     required: true
-  - id: IP_Nodo
-    type: STRING
-    description: "IP del nodo donde se construirán y ejecutarán los contenedores Docker."
-    required: true
-  - id: ssh_username 
-    type: STRING
-    description: "Nombre de usuario para la conexión SSH al nodo remoto."
-    required: true
-  - id: ssh_password 
-    type: STRING
-    description: "Contraseña para la conexión SSH al nodo remoto."
-    required: true
+  # Se eliminan los inputs de SSH ya que no se usarán en la versión gratuita
+  # - id: IP_Nodo
+  #   type: STRING
+  #   description: "IP del nodo donde se construirán y ejecutarán los contenedores Docker."
+  #   required: true
+  # - id: ssh_username
+  #   type: STRING
+  #   description: "Nombre de usuario para la conexión SSH al nodo remoto."
+  #   required: true
+  # - id: ssh_password
+  #   type: STRING
+  #   description: "Contraseña para la conexión SSH al nodo remoto."
+  #   required: true
 
 tasks:
-  - id: log_ssh_credentials_info
-    type: io.kestra.plugin.core.log.Log
-    message: "Usando credenciales SSH para {{ inputs.IP_Nodo }} con usuario {{ inputs.ssh_username }}"
+  # Se elimina la tarea de log de credenciales SSH
+  # - id: log_ssh_credentials_info
+  #   type: io.kestra.plugin.core.log.Log
+  #   message: "Usando credenciales SSH para {{ inputs.IP_Nodo }} con usuario {{ inputs.ssh_username }}"
 
-  - id: upload_docker_files
-    type: io.kestra.plugin.fs.ssh.Upload
-    host: "{{ inputs.IP_Nodo }}"
-    username: "{{ inputs.ssh_username }}"
-    password: "{{ inputs.ssh_password }}"
-    from:
-      - Dockerfile: "{{ read('Dockerfile') }}" 
-    to: "/tmp/kestra_julia_processor_{{ execution.id }}"
-    description: "Subiendo Dockerfile al nodo remoto para la construcción de la imagen."
+  # Se elimina la tarea de upload SSH, ya que Dockerfile y script se gestionan localmente
+  # - id: upload_docker_files
+  #   type: io.kestra.plugin.fs.ssh.Upload # <-- Plugin de la version de pago
+  #   host: "{{ inputs.IP_Nodo }}"
+  #   username: "{{ inputs.ssh_username }}"
+  #   password: "{{ inputs.ssh_password }}"
+  #   from:
+  #     - Dockerfile: "{{ read('Dockerfile') }}"
+  #   to: "/tmp/kestra_julia_processor_{{ execution.id }}"
+  #   description: "Subiendo Dockerfile al nodo remoto para la construcción de la imagen."
 
-  - id: construir_imagen_julia_processor_remote
-    type: io.kestra.plugin.fs.ssh.Command
-    host: "{{ inputs.IP_Nodo }}"
-    username: "{{ inputs.ssh_username }}"
-    password: "{{ inputs.ssh_password }}"
-    commands:
-      - "cd /tmp/kestra_julia_processor_{{ execution.id }} && docker build -t kestra-julia-processor:{{ execution.id }} ."
-    description: "Construyendo la imagen Docker en el nodo remoto."
+  - id: construir_imagen_julia_processor
+    type: io.kestra.plugin.docker.Build
+    inputFiles:
+      Dockerfile: "{{ read('Dockerfile') }}"
+      logs_de_kestra.jl: "{{ read('logs_de_kestra.jl') }}" # Se asegura que el script también se lea para la construcción
+    dockerfile: Dockerfile
+    tags:
+      - kestra-julia-processor:{{ execution.id }}
+    description: "Construyendo la imagen Docker en el worker de Kestra."
 
   - id: obtener_logs_de_ejecucion
     type: io.kestra.plugin.core.http.Request
@@ -49,28 +53,28 @@ tasks:
     method: GET
     description: "Obteniendo los logs de la ejecución de Kestra."
 
-  - id: procesar_logs_con_julia_remote
-    type: io.kestra.plugin.fs.ssh.Command
-    host: "{{ inputs.IP_Nodo }}"
-    username: "{{ inputs.ssh_username }}"
-    password: "{{ inputs.ssh_password }}"
+  # Se vuelve a usar el plugin docker.Run para ejecutar el contenedor en el worker de Kestra
+  - id: procesar_logs_con_julia
+    type: io.kestra.plugin.docker.Run
+    containerImage: kestra-julia-processor:{{ execution.id }}
+    env:
+      LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body | escapeJson }}"
     commands:
-      - |
-        docker run --rm \
-        -e LOGS_JSON_DATA="{{ outputs.obtener_logs_de_ejecucion.body | escapeJson }}" \
-        -v /home/int/script_ibar.jl:/app \
-        -v /tmp/kestra_julia_processor_{{ execution.id }}:/tmp_output \
-        kestra-julia-processor:{{ execution.id }} julia /app/logs_de_kestra.jl
-    description: "Ejecutando el script de Julia en el contenedor Docker remoto."
+      - julia /app/logs_de_kestra.jl # El script está en /app dentro del contenedor
+                                      # Se usa outputFiles para recolectar el PNG directamente del contenedor
+    outputFiles:
+      - distribucion_logs.png
+    description: "Ejecutando el script de Julia en el contenedor Docker en el worker de Kestra."
 
-  - id: download_log_plot
-    type: io.kestra.plugin.fs.ssh.Download
-    host: "{{ inputs.IP_Nodo }}"
-    username: "{{ inputs.ssh_username }}"
-    password: "{{ inputs.ssh_password }}"
-    from: "/tmp/kestra_julia_processor_{{ execution.id }}/distribucion_logs.png"
-    to: "{{ outputDir }}/distribucion_logs.png"
-    description: "Descargando el gráfico de distribución de logs generado desde el nodo remoto."
+  # Se elimina la tarea de descarga SSH ya que outputFiles lo maneja directamente
+  # - id: download_log_plot
+  #   type: io.kestra.plugin.fs.ssh.Download # <-- Plugin de la version de pago
+  #   host: "{{ inputs.IP_Nodo }}"
+  #   username: "{{ inputs.ssh_username }}"
+  #   password: "{{ inputs.ssh_password }}"
+  #   from: "/tmp/kestra_julia_processor_{{ execution.id }}/distribucion_logs.png"
+  #   to: "{{ outputDir }}/distribucion_logs.png"
+  #   description: "Descargando el gráfico de distribución de logs generado desde el nodo remoto."
 
 outputs:
   - id: logs_capturados
@@ -78,7 +82,7 @@ outputs:
     value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
   - id: resultado_del_procesamiento_julia
     type: STRING
-    value: "{{ outputs.procesar_logs_con_julia_remote.stdout }}"
+    value: "{{ outputs.procesar_logs_con_julia.stdout }}" # Referencia a la nueva tarea docker.Run
   - id: log_distribution_plot
     type: FILE
-    value: "{{ outputs.download_log_plot.uri }}"
+    value: "{{ outputs.procesar_logs_con_julia['distribucion_logs.png'] }}" # Referencia a la salida de outputFiles
