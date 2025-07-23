@@ -6,42 +6,15 @@ inputs:
     type: STRING
     description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
     required: true
-  # Se eliminan los inputs de SSH ya que no se usarán en la versión gratuita
-  # - id: IP_Nodo
-  #   type: STRING
-  #   description: "IP del nodo donde se construirán y ejecutarán los contenedores Docker."
-  #   required: true
-  # - id: ssh_username
-  #   type: STRING
-  #   description: "Nombre de usuario para la conexión SSH al nodo remoto."
-  #   required: true
-  # - id: ssh_password
-  #   type: STRING
-  #   description: "Contraseña para la conexión SSH al nodo remoto."
-  #   required: true
+  # Los inputs de SSH y IP_Nodo se mantienen comentados ya que estamos en la versión gratuita
+  # y no interactuamos con máquinas remotas para el procesamiento de logs.
 
 tasks:
-  # Se elimina la tarea de log de credenciales SSH
-  # - id: log_ssh_credentials_info
-  #   type: io.kestra.plugin.core.log.Log
-  #   message: "Usando credenciales SSH para {{ inputs.IP_Nodo }} con usuario {{ inputs.ssh_username }}"
-
-  # Se elimina la tarea de upload SSH, ya que Dockerfile y script se gestionan localmente
-  # - id: upload_docker_files
-  #   type: io.kestra.plugin.fs.ssh.Upload # <-- Plugin de la version de pago
-  #   host: "{{ inputs.IP_Nodo }}"
-  #   username: "{{ inputs.ssh_username }}"
-  #   password: "{{ inputs.ssh_password }}"
-  #   from:
-  #     - Dockerfile: "{{ read('Dockerfile') }}"
-  #   to: "/tmp/kestra_julia_processor_{{ execution.id }}"
-  #   description: "Subiendo Dockerfile al nodo remoto para la construcción de la imagen."
-
   - id: construir_imagen_julia_processor
     type: io.kestra.plugin.docker.Build
     inputFiles:
       Dockerfile: "{{ read('Dockerfile') }}"
-      logs_de_kestra.jl: "{{ read('logs_de_kestra.jl') }}" # Se asegura que el script también se lea para la construcción
+      logs_de_kestra.jl: "{{ read('logs_de_kestra.jl') }}" # Se asegura que el script actualizado se lea
     dockerfile: Dockerfile
     tags:
       - kestra-julia-processor:{{ execution.id }}
@@ -51,38 +24,45 @@ tasks:
     type: io.kestra.plugin.core.http.Request
     uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
     method: GET
+    # CAMBIO CRÍTICO: Añadir headers para autenticación si es necesario.
+    # Si tu Kestra requiere autenticación (común incluso en localhost), DEBES añadir un token aquí.
+    # Ejemplo (reemplaza 'YOUR_KESTRA_API_TOKEN' con tu token real):
+    # headers:
+    #   Authorization: "Bearer YOUR_KESTRA_API_TOKEN"
     description: "Obteniendo los logs de la ejecución de Kestra."
 
-  # Se vuelve a usar el plugin docker.Run para ejecutar el contenedor en el worker de Kestra
+  - id: debug_api_output # Tarea de depuración: ¡Muy importante para ver la respuesta de la API!
+    type: io.kestra.plugin.core.log.Log
+    message: "Output de obtener_logs_de_ejecucion: {{ outputs.obtener_logs_de_ejecucion | json }}"
+
   - id: procesar_logs_con_julia
     type: io.kestra.plugin.docker.Run
     containerImage: kestra-julia-processor:{{ execution.id }}
     env:
+      # CAMBIO: Pasamos el cuerpo completo de la respuesta de la API al script de Julia
       LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body | escapeJson }}"
     commands:
-      - julia /app/logs_de_kestra.jl # El script está en /app dentro del contenedor
-                                      # Se usa outputFiles para recolectar el PNG directamente del contenedor
+      - julia /app/logs_de_kestra.jl # El script ahora lee desde ENV
+    # CAMBIO: Ahora esperamos múltiples archivos de salida (HTML y PNGs)
     outputFiles:
+      - reporte_logs.html
       - distribucion_logs.png
+      - logs_error.png
     description: "Ejecutando el script de Julia en el contenedor Docker en el worker de Kestra."
-
-  # Se elimina la tarea de descarga SSH ya que outputFiles lo maneja directamente
-  # - id: download_log_plot
-  #   type: io.kestra.plugin.fs.ssh.Download # <-- Plugin de la version de pago
-  #   host: "{{ inputs.IP_Nodo }}"
-  #   username: "{{ inputs.ssh_username }}"
-  #   password: "{{ inputs.ssh_password }}"
-  #   from: "/tmp/kestra_julia_processor_{{ execution.id }}/distribucion_logs.png"
-  #   to: "{{ outputDir }}/distribucion_logs.png"
-  #   description: "Descargando el gráfico de distribución de logs generado desde el nodo remoto."
 
 outputs:
   - id: logs_capturados
     type: STRING
-    value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
+    value: "{{ outputs.obtener_logs_de_ejecucion.body }}" # La salida de la API
   - id: resultado_del_procesamiento_julia
     type: STRING
-    value: "{{ outputs.procesar_logs_con_julia.stdout }}" # Referencia a la nueva tarea docker.Run
-  - id: log_distribution_plot
+    value: "{{ outputs.procesar_logs_con_julia.stdout }}"
+  - id: log_html_report # Nueva salida para el informe HTML
     type: FILE
-    value: "{{ outputs.procesar_logs_con_julia['distribucion_logs.png'] }}" # Referencia a la salida de outputFiles
+    value: "{{ outputs.procesar_logs_con_julia['reporte_logs.html'] }}"
+  - id: log_distribution_plot # Salida para el PNG de distribución
+    type: FILE
+    value: "{{ outputs.procesar_logs_con_julia['distribucion_logs.png'] }}"
+  - id: log_error_plot # Salida para el PNG de errores
+    type: FILE
+    value: "{{ outputs.procesar_logs_con_julia['logs_error.png'] }}"
