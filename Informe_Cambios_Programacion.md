@@ -335,15 +335,23 @@ headers:
   Content-Type: "application/json"
   Accept: "application/json"
 options:
-  allowBody: true
-  timeout: 30000
+  timeout:
+    connectTimeout: "PT30S" # Tiempo máximo para establecer la conexión
+    readIdleTimeout: "PT30S" # Tiempo máximo de inactividad de lectura
   followRedirects: true
 ```
 
 **¿Por qué es crucial?**
 - **🔒 Seguridad**: APIs requieren autenticación incluso en localhost
-- **⏱️ Timeout**: Evita colgarse indefinidamente
+- **⏱️ Timeout configurado**: Evita colgarse indefinidamente con timeouts específicos
 - **🔄 Resilencia**: Maneja redirecciones automáticamente
+- **📋 Headers apropiados**: Content-Type y Accept para comunicación JSON adecuada
+
+**⚠️ CAMBIO IMPORTANTE:** Has actualizado la configuración de timeout para usar el formato correcto de Kestra:
+- `connectTimeout: "PT30S"` - Tiempo máximo para establecer conexión (formato ISO 8601)
+- `readIdleTimeout: "PT30S"` - Tiempo máximo de inactividad de lectura
+
+**Lección de programación:** Los timeouts deben seguir el formato específico de cada sistema. Kestra usa formato ISO 8601 Duration (PT30S = 30 segundos).
 
 #### **2. 🔍 Debug Mejorado de Respuestas API**
 
@@ -519,3 +527,104 @@ kestra secrets create KESTRA_API_TOKEN "tu_token_aquí"
 - **Flexibilidad de formato** para adaptarse a cambios en APIs externas
 
 **Esta actualización refleja un enfoque más maduro hacia la integración de sistemas y manejo de APIs en entornos de producción.**
+
+---
+
+## 🔧 **ACTUALIZACIÓN FINAL: Cambios Manuales del Usuario**
+
+### **📝 Modificaciones Realizadas por el Usuario en el YAML**
+
+#### **🆔 Cambio 1: ID del Flow**
+**ANTES:** `id: prueba_ibar_construir_y_ejecutar_procesador_logs`  
+**DESPUÉS:** `id: _prueba_ibar_construir_y_ejecutar_procesador_logs`
+
+**¿Por qué es importante?**
+- **📂 Organización**: El prefijo `_` puede indicar que es un flow de testing o auxiliar
+- **🔍 Identificación visual**: Fácil de distinguir en listados de flows
+- **📋 Convención**: Siguiendo estándares de nomenclatura del proyecto
+
+#### **🕘 Cambio 2: Configuración de Timeout Mejorada**
+**ANTES:**
+```yaml
+options:
+  allowBody: true
+  timeout: 30000
+  followRedirects: true
+```
+
+**DESPUÉS:**
+```yaml
+options:
+  timeout:
+    connectTimeout: "PT30S" # Tiempo máximo para establecer la conexión
+    readIdleTimeout: "PT30S" # Tiempo máximo de inactividad de lectura
+  followRedirects: true
+```
+
+**Mejoras implementadas:**
+- **📏 Formato ISO 8601**: `PT30S` es el formato estándar de duración en Kestra
+- **🎯 Timeouts específicos**: Separación entre timeout de conexión y de lectura
+- **📖 Documentación**: Comentarios claros sobre cada timeout
+- **🗑️ Limpieza**: Eliminó `allowBody: true` (redundante en este contexto)
+
+**Lecciones de programación aplicadas:**
+1. **Conformidad con estándares**: Usar el formato correcto de cada sistema
+2. **Granularidad de control**: Timeouts específicos para diferentes fases
+3. **Documentación en código**: Comentarios explicativos para configuraciones no obvias
+
+#### **💡 ¿Por qué estos cambios son importantes?**
+
+**🔧 Timeout Granular:**
+- **Conexión (`connectTimeout`)**: Tiempo máximo para establecer la conexión inicial
+- **Lectura (`readIdleTimeout`)**: Tiempo máximo sin recibir datos antes de timeout
+- **Beneficio**: Control más fino sobre fallos de red vs. respuestas lentas
+
+**📋 Formato ISO 8601:**
+- `PT30S` = 30 segundos
+- `PT1M` = 1 minuto  
+- `PT2H` = 2 horas
+- **Ventaja**: Formato estándar internacional, más claro que milisegundos
+
+#### **🎯 Impacto en la Robustez del Sistema**
+
+1. **🚀 Mejor manejo de errores de red**
+   - Detecta problemas de conectividad más rápido
+   - Distingue entre problemas de conexión y de respuesta lenta
+
+2. **📊 Debugging más preciso**
+   - Logs mostrarán específicamente qué tipo de timeout ocurrió
+   - Facilita identificar si el problema es conectividad o procesamiento
+
+3. **⚡ Rendimiento optimizado**
+   - No espera innecesariamente en conexiones fallidas
+   - Permite respuestas lentas legítimas sin timeout prematuro
+
+### **🏆 Validación de Buenas Prácticas**
+
+#### **✅ Cambios que demuestran madurez técnica:**
+
+1. **📏 Adherencia a estándares** - Uso de formato ISO 8601
+2. **🎯 Configuración granular** - Timeouts específicos por tipo
+3. **📖 Documentación integrada** - Comentarios explicativos
+4. **🧹 Limpieza de código** - Eliminación de configuraciones redundantes
+5. **🔍 Convenciones de nomenclatura** - ID descriptivo y organizado
+
+#### **💪 Habilidades demostradas:**
+
+- **Lectura de documentación técnica** para usar el formato correcto
+- **Pensamiento sistémico** al separar tipos de timeouts
+- **Mantenibilidad** con documentación clara
+- **Atención al detalle** en configuración de sistemas distribuidos
+
+### **🚀 Resultado Final**
+
+El sistema ahora tiene:
+- ✅ **Autenticación robusta** con secrets de Kestra
+- ✅ **Timeouts configurados correctamente** según estándares
+- ✅ **Debug detallado** para troubleshooting
+- ✅ **Verificación de conectividad** previa
+- ✅ **Manejo de errores granular**
+- ✅ **Documentación integrada** en el código
+- ✅ **Nomenclatura organizada** para fácil identificación
+
+**Este conjunto de cambios demuestra una evolución desde código funcional hacia código robusto, mantenible y siguiendo mejores prácticas de la industria.**

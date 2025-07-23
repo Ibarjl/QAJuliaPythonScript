@@ -1,10 +1,10 @@
-id: prueba_ibar_construir_y_ejecutar_procesador_logs
+id: _prueba_ibar_construir_y_ejecutar_procesador_logs
 namespace: core.gt
 
 inputs:
-  - id: id_ejecucion_a_procesar
+  - id: nombre_archivo_logs # NUEVO INPUT: Para el nombre del archivo de logs subido manualmente
     type: STRING
-    description: "ID de la ejecución de Kestra cuyos logs se van a procesar."
+    description: "Nombre del archivo de logs subido a Kestra Files (ej. mis_logs.txt o mis_logs.json)."
     required: true
   # Los inputs de SSH y IP_Nodo se mantienen comentados ya que estamos en la versión gratuita
   # y no interactuamos con máquinas remotas para el procesamiento de logs.
@@ -20,52 +20,51 @@ tasks:
       - kestra-julia-processor:{{ execution.id }}
     description: "Construyendo la imagen Docker en el worker de Kestra."
 
-  - id: verificar_conectividad_api
-    type: io.kestra.plugin.core.http.Request
-    uri: "http://localhost:8080/api/v1/version"
-    method: GET
-    headers:
-      Accept: "application/json"
-    description: "Verificar que la API de Kestra esté disponible"
+  # CAMBIO: Se eliminan todas las tareas relacionadas con la API HTTP de Kestra
+  # - id: verificar_conectividad_api
+  #   type: io.kestra.plugin.core.http.Request
+  #   uri: "http://localhost:8080/api/v1/version"
+  #   method: GET
+  #   headers:
+  #     Accept: "application/json"
+  #   allowFailed: true 
+  #   description: "Verificar que la API de Kestra esté disponible (puede fallar si el endpoint no existe)."
 
-  - id: obtener_logs_de_ejecucion
-    type: io.kestra.plugin.core.http.Request
-    uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
-    method: GET
-    # CRÍTICO: Configuración de autenticación
-    headers:
-      Authorization: "Basic {{ secret('KESTRA_API_TOKEN') }}"
-      # O si usas Bearer token:
-      # Authorization: "Bearer {{ secret('KESTRA_BEARER_TOKEN') }}"
-      Content-Type: "application/json"
-      Accept: "application/json"
-    # Configuración adicional para manejar errores
-    options:
-      allowBody: true
-      timeout: 30000
-      followRedirects: true
-    description: "Obteniendo los logs de la ejecución de Kestra con autenticación."
+  # - id: obtener_logs_de_ejecucion
+  #   type: io.kestra.plugin.core.http.Request
+  #   uri: "http://localhost:8080/api/v1/executions/{{ inputs.id_ejecucion_a_procesar }}/logs"
+  #   method: GET
+  #   headers:
+  #     Authorization: "Basic {{ secret('KESTRA_API_TOKEN') }}"
+  #     Content-Type: "application/json"
+  #     Accept: "application/json"
+  #   options:
+  #     timeout:
+  #       connectTimeout: "PT30S"
+  #       readIdleTimeout: "PT30S"
+  #   followRedirects: true
+  #   allowFailed: true
+  #   description: "Obteniendo los logs de la ejecución de Kestra con autenticación."
 
-  - id: debug_api_output # Tarea de depuración: ¡Muy importante para ver la respuesta de la API!
-    type: io.kestra.plugin.core.log.Log
-    message: |
-      === DEBUG API RESPONSE ===
-      Status Code: {{ outputs.obtener_logs_de_ejecucion.code }}
-      Headers: {{ outputs.obtener_logs_de_ejecucion.headers | json }}
-      Body Type: {{ outputs.obtener_logs_de_ejecucion.body | type }}
-      Body Preview: {{ outputs.obtener_logs_de_ejecucion.body | truncate(500) }}
-      Full Output: {{ outputs.obtener_logs_de_ejecucion | json }}
-      ========================
+  # - id: debug_api_output
+  #   type: io.kestra.plugin.core.log.Log
+  #   message: |
+  #     === DEBUG API RESPONSE ===
+  #     Status Code: {{ outputs.obtener_logs_de_ejecucion.code }}
+  #     Headers: {{ outputs.obtener_logs_de_ejecucion.headers | json }}
+  #     Body Type: {{ outputs.obtener_logs_de_ejecucion.body | type }}
+  #     Body Preview: {{ outputs.obtener_logs_de_ejecucion.body | truncate(500) }}
+  #     Full Output: {{ outputs.obtener_logs_de_ejecucion | json }}
+  #     ========================
 
   - id: procesar_logs_con_julia
     type: io.kestra.plugin.docker.Run
     containerImage: kestra-julia-processor:{{ execution.id }}
-    env:
-      # CAMBIO: Pasamos el cuerpo completo de la respuesta de la API al script de Julia
-      LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body | escapeJson }}"
+    inputFiles: # NUEVO: Montamos el archivo de logs subido a Kestra Files
+      uploaded_log_file: "{{ read(inputs.nombre_archivo_logs) }}"
     commands:
-      - julia /app/logs_de_kestra.jl # El script ahora lee desde ENV
-    # CAMBIO: Ahora esperamos múltiples archivos de salida (HTML y PNGs) desde /tmp
+      # CAMBIO: Pasamos la ruta del archivo montado al script de Julia
+      - julia /app/logs_de_kestra.jl /app/uploaded_log_file
     outputFiles:
       - "/tmp/reporte_logs.html"
       - "/tmp/distribucion_logs.png" 
@@ -73,18 +72,19 @@ tasks:
     description: "Ejecutando el script de Julia en el contenedor Docker en el worker de Kestra."
 
 outputs:
-  - id: logs_capturados
-    type: STRING
-    value: "{{ outputs.obtener_logs_de_ejecucion.body }}" # La salida de la API
+  # CAMBIO: Se elimina la salida de logs_capturados de la API
+  # - id: logs_capturados
+  #   type: STRING
+  #   value: "{{ outputs.obtener_logs_de_ejecucion.body }}"
   - id: resultado_del_procesamiento_julia
     type: STRING
     value: "{{ outputs.procesar_logs_con_julia.stdout }}"
-  - id: log_html_report # Nueva salida para el informe HTML
+  - id: log_html_report
     type: FILE
     value: "{{ outputs.procesar_logs_con_julia['/tmp/reporte_logs.html'] }}"
-  - id: log_distribution_plot # Salida para el PNG de distribución
+  - id: log_distribution_plot
     type: FILE
     value: "{{ outputs.procesar_logs_con_julia['/tmp/distribucion_logs.png'] }}"
-  - id: log_error_plot # Salida para el PNG de errores
+  - id: log_error_plot
     type: FILE
     value: "{{ outputs.procesar_logs_con_julia['/tmp/logs_error.png'] }}"

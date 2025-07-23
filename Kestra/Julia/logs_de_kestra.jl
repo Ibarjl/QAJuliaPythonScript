@@ -3,17 +3,16 @@ using DataFrames    # Importa la librería para trabajar con DataFrames
 using DataFramesMeta # Importa macros útiles para manipular DataFrames
 using Plots         # Importa la librería para visualización de datos
 using FreqTables    # Importa funciones para contar frecuencias fácilmente
-using Dates
 using GR            # Importa el backend GR para Plots (Justificación: para entornos sin cabeza)
 
 """
-    log_a_html(log_content::String, html_path::String)
+    log_a_html(log_file_path::String, html_output_path::String)
 
-Convierte una cadena de texto de log a formato HTML con estilos CSS.
+Convierte un archivo de log de texto a formato HTML con estilos CSS.
 """
-function log_a_html(log_content::String, html_path::String)
+function log_a_html(log_file_path::String, html_output_path::String)
     try
-        lineas = split(log_content, '\n') # Divide el contenido en líneas
+        lineas = readlines(log_file_path) # Lee el archivo de log
 
         html_inicio = """<!DOCTYPE html>
 <html lang="es">
@@ -50,96 +49,78 @@ function log_a_html(log_content::String, html_path::String)
                 css_class *= " debug"
             end
             
-            # Escapar caracteres HTML para evitar problemas de renderizado
-            linea_escaped = replace(strip(linea), 
-                "&" => "&amp;", 
-                "<" => "&lt;", 
-                ">" => "&gt;", 
-                "\"" => "&quot;")
-            contenido_html *= "<div class=\"$css_class\">$linea_escaped</div>\n"
+            contenido_html *= "<div class=\"$css_class\">$(strip(linea))</div>\n"
         end
         
-        mkpath(dirname(html_path)) # Crear directorio si no existe
+        mkpath(dirname(html_output_path)) # Crear directorio si no existe
         
-        open(html_path, "w") do html_file
+        open(html_output_path, "w") do html_file
             write(html_file, html_inicio * contenido_html * html_fin)
         end
         
-        println("HTML generado en: $html_path")
+        println("HTML generado en: $html_output_path")
         
     catch e
-        println("Error al procesar el contenido del log a HTML: $e")
+        println("Error al procesar $log_file_path a HTML: $e")
     end
 end
 
 """
-    crear_df_desde_contenido(log_content::String)::DataFrame
+    crear_df_desde_archivo(file_path::String)::DataFrame
 
-Procesa una cadena de texto de logs (JSON o texto plano) y la convierte en un DataFrame unificado.
+Procesa un único archivo de log (JSON, .log, .txt) y lo convierte en un DataFrame.
 """
-function crear_df_desde_contenido(log_content::String)::DataFrame
+function crear_df_desde_archivo(file_path::String)::DataFrame
     df_logs = DataFrame()
-    if isempty(log_content)
-        @warn "Contenido de log vacío." (Fecha: today())
+    if !isfile(file_path)
+        @error "El archivo: << $file_path >> no existe." (Fecha: 2025-07-23)
         return df_logs
     end
 
-    @info "Intentando procesar contenido de logs (longitud: $(length(log_content)) caracteres)" (Fecha: today())
-    
     try
-        # Intentar parsear como JSON (si Kestra API devuelve JSON)
-        parsed_data = JSON.parse(log_content)
-        @info "JSON parseado exitosamente, tipo: $(typeof(parsed_data))" (Fecha: today())
-        
-        if isa(parsed_data, AbstractArray)
-            @info "Procesando array JSON con $(length(parsed_data)) elementos" (Fecha: today())
-            df_logs = DataFrame(parsed_data)
-        elseif isa(parsed_data, AbstractDict)
-            @info "Procesando diccionario JSON" (Fecha: today())
-            # Si es un objeto con logs como propiedad
-            if haskey(parsed_data, "logs")
-                logs_array = parsed_data["logs"]
-                df_logs = DataFrame(logs_array)
-            elseif haskey(parsed_data, "data")
-                logs_array = parsed_data["data"]
-                df_logs = DataFrame(logs_array)
+        contenido = read(file_path, String)
+        if endswith(file_path, ".json")
+            logs_data = JSON.parse(contenido)
+            if isa(logs_data, AbstractArray)
+                df_logs = DataFrame(logs_data)
+            elseif isa(logs_data, AbstractDict)
+                df_logs = DataFrame([logs_data])
             else
-                df_logs = DataFrame([parsed_data])
+                @warn "Contenido JSON inesperado en $file_path. Se procesará como texto plano." (Fecha: 2025-07-23)
+                # Fallback a texto plano si JSON no es un array/dict esperado
+                lineas = filter(!isempty, split(contenido, "\n"))
+                niveles = map(line -> begin
+                        if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
+                            match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
+                        else
+                            "UNKNOWN"
+                        end
+                    end, lineas)
+                df_logs = DataFrame(
+                    level = niveles,
+                    content = lineas
+                )
             end
+        elseif endswith(file_path, ".txt") || endswith(file_path, ".log")
+            lineas = filter(!isempty, split(contenido, "\n"))
+            niveles = map(line -> begin
+                    if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
+                        match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
+                    else
+                        "UNKNOWN"
+                    end
+                end, lineas)
+            df_logs = DataFrame(
+                level = niveles,
+                content = lineas
+            )
         else
-            @warn "Contenido JSON inesperado: $(typeof(parsed_data)). Se procesará como texto plano." (Fecha: today())
-            # Fallback a texto plano si JSON no es un array/dict esperado
-            df_logs = procesar_como_texto_plano(log_content)
+            @warn "Tipo de archivo no soportado para DataFrame: $file_path" (Fecha: 2025-07-23)
         end
     catch e
-        # Si falla el parseo JSON, procesar como texto plano
-        @warn "Fallo al parsear JSON: $e. Procesando como texto plano." (Fecha: today())
-        df_logs = procesar_como_texto_plano(log_content)
+        @error "Error al procesar el archivo $file_path: $e" exception=(e, catch_backtrace()) (Fecha: 2025-07-23)
     end
-    
-    @info "DataFrame creado con $(nrow(df_logs)) filas y columnas: $(names(df_logs))" (Fecha: today())
     return df_logs
-end
-
-"""
-Helper function para procesar contenido como texto plano
-"""
-function procesar_como_texto_plano(log_content::String)::DataFrame
-    lineas = filter(!isempty, split(log_content, "\n"))
-    @info "Procesando $(length(lineas)) líneas de texto plano" (Fecha: today())
-    
-    niveles = map(line -> begin
-            if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
-                match(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line).match
-            else
-                "UNKNOWN"
-            end
-        end, lineas)
-    
-    return DataFrame(
-        level = niveles,
-        content = lineas
-    )
 end
 
 
@@ -159,7 +140,7 @@ function filtrar_logs_de_error(logs_df::DataFrame)::DataFrame
         return @subset(logs_df, occursin.("ERROR", :content))
         
     else
-        @warn "No se encontraron columnas 'level', 'contenido' o 'content' en los logs" (Fecha: today())
+        @warn "No se encontraron columnas 'level', 'contenido' o 'content' en los logs" (Fecha: 2025-07-22)
         return DataFrame()
     end
 end
@@ -171,13 +152,7 @@ Crea una visualización de los logs en forma de gráfico de barras y lo guarda e
 """
 function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::String="Distribución de Logs por Nivel", output_file::String="log_distribution.png")
     if !(type_col in names(logs_df))
-        @warn "La columna '$type_col' no se encontró en el DataFrame para la visualización." (Fecha: today())
-        return nothing
-    end
-
-    # Verificar que hay datos para visualizar
-    if nrow(logs_df) == 0
-        @warn "DataFrame vacío, no se puede crear visualización." (Fecha: today())
+        @warn "La columna '$type_col' no se encontró en el DataFrame para la visualización." (Fecha: 2025-07-22)
         return nothing
     end
 
@@ -194,42 +169,41 @@ function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::Str
             fmt=:png
             )
     
-    # Guardar directamente en /tmp para que Kestra pueda encontrarlo
-    output_path = joinpath("/tmp", output_file)
+    output_path = "/tmp_output/" * output_file
     mkpath(dirname(output_path))
     savefig(p, output_path)
-    @info "Gráfico guardado en: $output_path" (Fecha: today())
+    @info "Gráfico guardado en: $output_path" (Fecha: 2025-07-22)
     return output_path
 end
 
 # Bloque principal para la ejecución del script en el contenedor Docker
 if abspath(PROGRAM_FILE) == @__FILE__
-    if haskey(ENV, "LOGS_JSON_DATA")
-        logs_content = ENV["LOGS_JSON_DATA"]
-        @info "Procesando logs desde LOGS_JSON_DATA (variable de entorno)." (Fecha: today())
+    if length(ARGS) >= 1
+        log_file_path_in_container = ARGS[1]
+        @info "Procesando logs desde el archivo: $log_file_path_in_container" (Fecha: 2025-07-23)
 
         # Generar HTML
-        html_output_file = "/tmp/reporte_logs.html"
-        log_a_html(logs_content, html_output_file)
+        html_output_file = "/tmp_output/reporte_logs.html"
+        log_a_html(log_file_path_in_container, html_output_file)
 
-        # Generar análisis y gráficos (si el contenido es parseable a DataFrame)
-        df_logs_data = crear_df_desde_contenido(logs_content)
+        # Generar análisis y gráficos
+        df_logs_data = crear_df_desde_archivo(log_file_path_in_container)
         if nrow(df_logs_data) > 0
-            @info "DataFrame de logs creado con $(nrow(df_logs_data)) filas para análisis." (Fecha: today())
+            @info "DataFrame de logs creado con $(nrow(df_logs_data)) filas para análisis." (Fecha: 2025-07-23)
             visualizar_logs(df_logs_data, output_file="distribucion_logs.png")
             
             logs_error = filtrar_logs_de_error(df_logs_data)
             if nrow(logs_error) > 0
-                @info "Se encontraron $(nrow(logs_error)) logs de error." (Fecha: today())
+                @info "Se encontraron $(nrow(logs_error)) logs de error." (Fecha: 2025-07-23)
                 visualizar_logs(logs_error, output_file="logs_error.png", title="Distribución de Logs de Error")
             else
-                @info "No se encontraron logs de error." (Fecha: today())
+                @info "No se encontraron logs de error." (Fecha: 2025-07-23)
             end
         else
-            @warn "No se pudo crear un DataFrame para análisis desde el contenido de los logs." (Fecha: today())
+            @warn "No se pudo crear un DataFrame para análisis desde el archivo de logs." (Fecha: 2025-07-23)
         end
     else
-        @error "La variable de entorno LOGS_JSON_DATA no está configurada. Este script está diseñado para ser ejecutado con Kestra." (Fecha: today())
+        @error "Se requiere la ruta del archivo de logs como argumento." (Fecha: 2025-07-23)
         exit(1)
     end
 end
