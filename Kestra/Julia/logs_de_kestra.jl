@@ -3,6 +3,7 @@ using DataFrames    # Importa la librería para trabajar con DataFrames
 using DataFramesMeta # Importa macros útiles para manipular DataFrames
 using Plots         # Importa la librería para visualización de datos
 using FreqTables    # Importa funciones para contar frecuencias fácilmente
+using Dates
 using GR            # Importa el backend GR para Plots (Justificación: para entornos sin cabeza)
 
 """
@@ -49,7 +50,13 @@ function log_a_html(log_content::String, html_path::String)
                 css_class *= " debug"
             end
             
-            contenido_html *= "<div class=\"$css_class\">$(strip(linea))</div>\n"
+            # Escapar caracteres HTML para evitar problemas de renderizado
+            linea_escaped = replace(strip(linea), 
+                "&" => "&amp;", 
+                "<" => "&lt;", 
+                ">" => "&gt;", 
+                "\"" => "&quot;")
+            contenido_html *= "<div class=\"$css_class\">$linea_escaped</div>\n"
         end
         
         mkpath(dirname(html_path)) # Crear directorio si no existe
@@ -73,7 +80,7 @@ Procesa una cadena de texto de logs (JSON o texto plano) y la convierte en un Da
 function crear_df_desde_contenido(log_content::String)::DataFrame
     df_logs = DataFrame()
     if isempty(log_content)
-        @warn "Contenido de log vacío." (Fecha: 2025-07-23)
+        @warn "Contenido de log vacío." (Fecha: today())
         return df_logs
     end
 
@@ -85,7 +92,7 @@ function crear_df_desde_contenido(log_content::String)::DataFrame
         elseif isa(parsed_data, AbstractDict)
             df_logs = DataFrame([parsed_data])
         else
-            @warn "Contenido JSON inesperado. Se procesará como texto plano." (Fecha: 2025-07-23)
+            @warn "Contenido JSON inesperado. Se procesará como texto plano." (Fecha: today())
             # Fallback a texto plano si JSON no es un array/dict esperado
             lineas = filter(!isempty, split(log_content, "\n"))
             niveles = map(line -> begin
@@ -102,7 +109,7 @@ function crear_df_desde_contenido(log_content::String)::DataFrame
         end
     catch e
         # Si falla el parseo JSON, procesar como texto plano
-        @warn "Fallo al parsear JSON: $e. Procesando como texto plano." (Fecha: 2025-07-23)
+        @warn "Fallo al parsear JSON: $e. Procesando como texto plano." (Fecha: today())
         lineas = filter(!isempty, split(log_content, "\n"))
         niveles = map(line -> begin
                 if occursin(r"^(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)", line)
@@ -136,7 +143,7 @@ function filtrar_logs_de_error(logs_df::DataFrame)::DataFrame
         return @subset(logs_df, occursin.("ERROR", :content))
         
     else
-        @warn "No se encontraron columnas 'level', 'contenido' o 'content' en los logs" (Fecha: 2025-07-22)
+        @warn "No se encontraron columnas 'level', 'contenido' o 'content' en los logs" (Fecha: today())
         return DataFrame()
     end
 end
@@ -148,7 +155,13 @@ Crea una visualización de los logs en forma de gráfico de barras y lo guarda e
 """
 function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::String="Distribución de Logs por Nivel", output_file::String="log_distribution.png")
     if !(type_col in names(logs_df))
-        @warn "La columna '$type_col' no se encontró en el DataFrame para la visualización." (Fecha: 2025-07-22)
+        @warn "La columna '$type_col' no se encontró en el DataFrame para la visualización." (Fecha: today())
+        return nothing
+    end
+
+    # Verificar que hay datos para visualizar
+    if nrow(logs_df) == 0
+        @warn "DataFrame vacío, no se puede crear visualización." (Fecha: today())
         return nothing
     end
 
@@ -165,10 +178,11 @@ function visualizar_logs(logs_df::DataFrame; type_col::Symbol=:level, title::Str
             fmt=:png
             )
     
-    output_path = "/tmp_output/" * output_file
+    # Guardar directamente en /tmp para que Kestra pueda encontrarlo
+    output_path = joinpath("/tmp", output_file)
     mkpath(dirname(output_path))
     savefig(p, output_path)
-    @info "Gráfico guardado en: $output_path" (Fecha: 2025-07-22)
+    @info "Gráfico guardado en: $output_path" (Fecha: today())
     return output_path
 end
 
@@ -176,30 +190,30 @@ end
 if abspath(PROGRAM_FILE) == @__FILE__
     if haskey(ENV, "LOGS_JSON_DATA")
         logs_content = ENV["LOGS_JSON_DATA"]
-        @info "Procesando logs desde LOGS_JSON_DATA (variable de entorno)." (Fecha: 2025-07-23)
+        @info "Procesando logs desde LOGS_JSON_DATA (variable de entorno)." (Fecha: today())
 
         # Generar HTML
-        html_output_file = "/tmp_output/reporte_logs.html"
+        html_output_file = "/tmp/reporte_logs.html"
         log_a_html(logs_content, html_output_file)
 
         # Generar análisis y gráficos (si el contenido es parseable a DataFrame)
         df_logs_data = crear_df_desde_contenido(logs_content)
         if nrow(df_logs_data) > 0
-            @info "DataFrame de logs creado con $(nrow(df_logs_data)) filas para análisis." (Fecha: 2025-07-23)
+            @info "DataFrame de logs creado con $(nrow(df_logs_data)) filas para análisis." (Fecha: today())
             visualizar_logs(df_logs_data, output_file="distribucion_logs.png")
             
             logs_error = filtrar_logs_de_error(df_logs_data)
             if nrow(logs_error) > 0
-                @info "Se encontraron $(nrow(logs_error)) logs de error." (Fecha: 2025-07-23)
+                @info "Se encontraron $(nrow(logs_error)) logs de error." (Fecha: today())
                 visualizar_logs(logs_error, output_file="logs_error.png", title="Distribución de Logs de Error")
             else
-                @info "No se encontraron logs de error." (Fecha: 2025-07-23)
+                @info "No se encontraron logs de error." (Fecha: today())
             end
         else
-            @warn "No se pudo crear un DataFrame para análisis desde el contenido de los logs." (Fecha: 2025-07-23)
+            @warn "No se pudo crear un DataFrame para análisis desde el contenido de los logs." (Fecha: today())
         end
     else
-        @error "La variable de entorno LOGS_JSON_DATA no está configurada. Este script está diseñado para ser ejecutado con Kestra." (Fecha: 2025-07-23)
+        @error "La variable de entorno LOGS_JSON_DATA no está configurada. Este script está diseñado para ser ejecutado con Kestra." (Fecha: today())
         exit(1)
     end
 end

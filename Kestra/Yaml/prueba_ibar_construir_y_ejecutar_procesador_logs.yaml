@@ -43,11 +43,11 @@ tasks:
       LOGS_JSON_DATA: "{{ outputs.obtener_logs_de_ejecucion.body | escapeJson }}"
     commands:
       - julia /app/logs_de_kestra.jl # El script ahora lee desde ENV
-    # CAMBIO: Ahora esperamos múltiples archivos de salida (HTML y PNGs)
+    # CAMBIO: Ahora esperamos múltiples archivos de salida (HTML y PNGs) desde /tmp
     outputFiles:
-      - reporte_logs.html
-      - distribucion_logs.png
-      - logs_error.png
+      - "/tmp/reporte_logs.html"
+      - "/tmp/distribucion_logs.png" 
+      - "/tmp/logs_error.png"
     description: "Ejecutando el script de Julia en el contenedor Docker en el worker de Kestra."
 
 outputs:
@@ -59,10 +59,10 @@ outputs:
     value: "{{ outputs.procesar_logs_con_julia.stdout }}"
   - id: log_html_report # Nueva salida para el informe HTML
     type: FILE
-    value: "{{ outputs.procesar_logs_con_julia['reporte_logs.html'] }}"
+    value: "{{ outputs.procesar_logs_con_julia['/tmp/reporte_logs.html'] }}"
   - id: log_distribution_plot # Salida para el PNG de distribución
     type: FILE
-    value: "{{ outputs.procesar_logs_con_julia['distribucion_logs.png'] }}"
+    value: "{{ outputs.procesar_logs_con_julia['/tmp/distribucion_logs.png'] }}"
   - id: log_error_plot # Salida para el PNG de errores
     type: FILE
-    value: "{{ outputs.procesar_logs_con_julia['logs_error.png'] }}"
+    value: "{{ outputs.procesar_logs_con_julia['/tmp/logs_error.png'] }}"
