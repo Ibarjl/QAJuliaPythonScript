@@ -5,7 +5,7 @@ inputs:
   - id: nombre_archivo_logs # NUEVO INPUT: Para el nombre del archivo de logs subido manualmente
     type: STRING
     description: "Nombre del archivo de logs subido a Kestra Files (ej. mis_logs.txt o mis_logs.json)."
-    required: true
+    required: false
   # Los inputs de SSH y IP_Nodo se mantienen comentados ya que estamos en la versión gratuita
   # y no interactuamos con máquinas remotas para el procesamiento de logs.
 
